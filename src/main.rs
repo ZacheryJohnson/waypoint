@@ -1,8 +1,6 @@
-use std::process::{Command, Stdio};
-
 mod app;
 mod gui;
 
 fn main() {
-    gui::WaypointGui::start().unwrap();
+    let mut gui = gui::WaypointGui::new(app::WaypointApp::new());
 } 

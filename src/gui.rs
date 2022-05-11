@@ -1,119 +1,97 @@
-use iced::{
-    button, scrollable, slider, text_input, Button, Checkbox,
-    Color, Column, Container, Element, Image, Length, Radio, Row, Sandbox,
-    Scrollable, Settings, Slider, Space, Text, TextInput
-};
-
 use crate::app::{*};
+
+use eframe::egui;
 
 pub struct WaypointGui {
     app: WaypointApp,
-    _tmp_start: button::State,
-    _tmp_logs: button::State,
-    _tmp_scrl: scrollable::State,
-    _tmp_service_id: ServiceId,
+    service_id: ServiceId,
+    logs_enabled: bool,
+    realtime_logs: bool,
 }
 
 impl WaypointGui {
-    pub fn start() -> iced::Result {
-        WaypointGui::run(Settings::default())
+    pub fn new(app: WaypointApp) -> WaypointGui {
+        let options = eframe::NativeOptions::default();
+        eframe::run_native(
+            "Waypoint",
+            options,
+            Box::new(|_cc| Box::new(WaypointGui {
+                app,
+                service_id: ServiceId::default(),
+                logs_enabled: true,
+                realtime_logs: true,
+            })),
+        );
     }
 }
 
-#[derive(Debug, Clone)]
-pub enum Message {
-    AddServer,
-    StartService,
-    ReadLogs,
-}
+impl WaypointGui {
+    /// This view allows users to configure services.
+    fn draw_service_configuration(&mut self, ui: &mut egui::Ui) {
 
-impl Sandbox for WaypointGui {
-    type Message = Message;
-
-    fn new() -> WaypointGui {
-        WaypointGui {
-            app: WaypointApp::new(),
-            _tmp_start: Default::default(),
-            _tmp_logs: Default::default(),
-            _tmp_scrl: Default::default(),
-            _tmp_service_id: Default::default(),
-        }
     }
 
-    fn title(&self) -> String {
-        String::from("Waypoint")
-    }
+    /// This view allows users to interact with service runtimes, including starting new services, reading logs, or killing running services.
+    fn draw_service_management(&mut self, ui: &mut egui::Ui) {
+        let services = self.app.get_running_services();
 
-    fn update(&mut self, event: Message) {
-        match event {
-            Message::AddServer => { println!("AddServer pressed!"); },
-            Message::StartService => { 
-                let service_id = self.app.start_service("foobar");
-                self._tmp_service_id = service_id;
-            },
-            Message::ReadLogs => {
-                if let Some(logs) = self.app.get_service_logs(&self._tmp_service_id) {
-                    let logs = &*logs.lock().unwrap();
-                    for logline in logs {
-                        print!("{}", logline)
-                    }
-                } else {
-                    println!("Failed to get logs...");
+        let selected_service = self.app.get_service_instance(&self.service_id);
+        egui::ComboBox::from_label("Services")
+            .selected_text(if selected_service.is_some() { selected_service.unwrap().display_name() } else { String::default() })
+            .show_ui(ui, |ui| {
+                for serv in services {
+                    ui.selectable_value(&mut self.service_id, serv.0.to_string(), serv.1.display_name());
                 }
             }
+        );
+
+        if ui.button("Start").clicked() {                
+            let service_id = self.app.start_service("foobar");
+            self.service_id = service_id;
         }
-    }
+        if self.service_id != ServiceId::default() {
+            if ui.button("Kill").clicked() {
+                self.app.kill(&self.service_id);
+            }
+            ui.horizontal(|ui| {
+                ui.label(format!("Selected service ID: '{}'", self.service_id));
+                
+                ui.horizontal(|ui| {
+                    if ui.button("Toggle Logs").clicked() {
+                        self.logs_enabled = !self.logs_enabled;
+                    }
+    
+                    ui.checkbox(&mut self.realtime_logs, "Realtime Logs");
+                });
+                if self.logs_enabled {
+                    let mut logstr = String::default();
+                    if let Some(logs) = self.app.get_service_logs(&self.service_id) {
+                        let logs = &*logs.lock().unwrap();
+                        for logline in logs {
+                            logstr = logstr + logline;
+                        }
+                    } else {
+                        println!("Failed to get logs...");
+                    }
 
-    fn view(&mut self) -> Element<Message> {
-        let app = self;
+                    let logbox = egui::TextEdit::multiline(&mut logstr).interactive(false).desired_rows(20).desired_width(800.0);
 
-        let scrollable = Scrollable::new(&mut app._tmp_scrl)
-            .push(Text::new("label"));
-
-        let content: Element<_> = Column::new()
-            .max_width(540)
-            .spacing(20)
-            .padding(20)
-            .push(Button::new(&mut app._tmp_start, Text::new("Start")).on_press(Message::StartService))
-            .push(Button::new(&mut app._tmp_logs, Text::new("Read Logs")).on_press(Message::ReadLogs))
-            .push(scrollable)
-            .into();
-
-        Container::new(content)
-            .height(Length::Fill)
-            .center_y()
-            .into()
+                    ui.add(logbox);
+                }
+            });
+        }
     }
 }
 
-mod style {
-    use iced::{button, Background, Color, Vector};
-
-    pub enum Button {
-        Primary,
-        Secondary,
-    }
-
-    impl button::StyleSheet for Button {
-        fn active(&self) -> button::Style {
-            button::Style {
-                background: Some(Background::Color(match self {
-                    Button::Primary => Color::from_rgb(0.11, 0.42, 0.87),
-                    Button::Secondary => Color::from_rgb(0.5, 0.5, 0.5),
-                })),
-                border_radius: 12.0,
-                shadow_offset: Vector::new(1.0, 1.0),
-                text_color: Color::from_rgb8(0xEE, 0xEE, 0xEE),
-                ..button::Style::default()
+impl eframe::App for WaypointGui {
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) -> () {
+        egui::CentralPanel::default().show(ctx, |ui| {    
+            if self.realtime_logs {
+                ctx.request_repaint();
             }
-        }
 
-        fn hovered(&self) -> button::Style {
-            button::Style {
-                text_color: Color::WHITE,
-                shadow_offset: Vector::new(1.0, 2.0),
-                ..self.active()
-            }
-        }
+            self.draw_service_configuration(ui);
+            self.draw_service_management(ui);
+        });
     }
 }
