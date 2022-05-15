@@ -3,12 +3,14 @@ use uuid::Uuid;
 
 use serde::{Serialize, Deserialize};
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Default, Debug, Clone)]
+#[serde(default)]
 /// Contains the configuration of service, namely how to run it and with what arguments.
 /// Actual processes are spawned from this configuration.
 pub struct ServiceConfig {
     pub path: String,
     pub display_name: String,
+    pub cmd_line_args: String,
 }
 
 pub type ServiceId = String;
@@ -119,10 +121,11 @@ impl WaypointApp {
     }
 
     /// Adds a service to our service configuration.
-    pub fn add_service_config(&mut self, exe_path: &String, display_name: &String) {
+    pub fn add_service_config(&mut self, exe_path: &String, display_name: &String, cmd_line_args: &String) {
         self.service_config.insert(display_name.clone(), ServiceConfig {
             path: exe_path.to_owned(),
-            display_name: display_name.to_owned()
+            display_name: display_name.to_owned(),
+            cmd_line_args: cmd_line_args.to_owned(),
         });
 
         // Once we've added the service, update our local config.
@@ -181,9 +184,16 @@ impl WaypointApp {
 
         println!("Spawning process {}", exe_path);
         
+        // TODO: Command line args should:
+        //          - be a vector
+        //          - support light scripting (particularly '{#}', which would be replaced with service instance number - eg DUMMY1, then DUMMY2, DUMMY3)
+        let argstring = cfg.cmd_line_args.clone();
+        let args: Vec<_> = argstring.split(" ").collect();
+        
         let child_process = std::process::Command::new(exe_path)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
+            .args(args)
             .spawn()
             .expect(format!("failed to start process {}", exe_path).as_str());
 

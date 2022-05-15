@@ -9,6 +9,7 @@ pub struct WaypointGui {
     realtime_logs: bool,
     config_service_name: String,
     config_service_path: String,
+    config_cmd_line_args: String,
     selected_config: Option<String>,
 }
 
@@ -25,6 +26,7 @@ impl WaypointGui {
                 realtime_logs: true,
                 config_service_name: Default::default(),
                 config_service_path: String::from("C:\\Users\\Zach\\dev\\dummy\\target\\debug\\dummy.exe"),
+                config_cmd_line_args: Default::default(),
                 selected_config: Default::default(),
             })),
         );
@@ -45,9 +47,14 @@ impl WaypointGui {
             ui.label("Service Path:");
             ui.text_edit_singleline(&mut self.config_service_path);
         });
+        
+        ui.horizontal(|ui| {
+            ui.label("Command Line Args:");
+            ui.text_edit_singleline(&mut self.config_cmd_line_args);
+        });
 
         if ui.button("Add").clicked() {
-            self.app.add_service_config(&self.config_service_path, &self.config_service_name);
+            self.app.add_service_config(&self.config_service_path, &self.config_service_name, &self.config_cmd_line_args);
         }
     }
 
@@ -100,20 +107,24 @@ impl WaypointGui {
     
                     ui.checkbox(&mut self.realtime_logs, "Realtime Logs");
                 });
+
                 if self.logs_enabled {
-                    let mut logstr = String::default();
                     if let Some(logs) = self.app.get_service_logs(&self.service_id) {
                         let logs = &*logs.lock().unwrap();
-                        for logline in logs {
-                            logstr = logstr + logline;
-                        }
+                        
+                        let text_style = egui::TextStyle::Small;
+                        let row_height = ui.text_style_height(&text_style);
+
+                        ui.vertical(|ui| {
+                            egui::ScrollArea::vertical().auto_shrink([true; 2]).show_rows(ui, row_height, logs.len(), |ui, _| {
+                                for log in logs {
+                                    ui.label(log.trim_end());
+                                }
+                            });
+                        });
                     } else {
                         println!("Failed to get logs...");
                     }
-
-                    let logbox = egui::TextEdit::multiline(&mut logstr).interactive(false).desired_rows(20).desired_width(800.0);
-
-                    ui.add(logbox);
                 }
             });
         }
