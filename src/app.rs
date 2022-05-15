@@ -27,47 +27,32 @@ impl ServiceInstance {
         let stderr = process.stderr.take().unwrap();
 
         let logs_mutex = Arc::new(Mutex::from(Vec::new()));
-        let mutex_clone = logs_mutex.clone();
+        let stdout_mutex_clone = logs_mutex.clone();
 
         thread::spawn(move || {
             let mut out = BufReader::new(stdout);
-            let mut err = BufReader::new(stderr);
-
-            let mut outdone = false;
-            let mut errdone = false;
 
             loop {
-                if outdone && errdone {
-                    break;
+                let mut outbuf = String::new();
+                match out.read_line(&mut outbuf) {
+                    Ok(0) => {}
+                    Ok(_) => stdout_mutex_clone.lock().unwrap().push(outbuf),
+                    Err(err) => println!("{:?}", err)
                 }
+            }
+        });
+        
+        let stderr_mutex_clone = logs_mutex.clone();
 
-                if !outdone {
-                    let mut outbuf = String::new();
-                    match out.read_line(&mut outbuf) {
-                        Ok(0) => {}
-                        Ok(_) => {
-                            mutex_clone.lock().unwrap().push(outbuf);
-                        },
-                        Err(err) => {
-                            println!("{:?}", err);
-                            outdone = true;
-                        }
-                    }
-                }                
+        thread::spawn(move || {
+            let mut out = BufReader::new(stderr);
 
-                if !errdone {
-                    // TODO: separate logfile for stderr?
-                    let mut errbuf = String::new();
-                    match err.read_line(&mut errbuf) {
-                        Ok(0) => {}
-                        Ok(_) => {
-                            mutex_clone.lock().unwrap().push(errbuf);
-                        },
-                        Err(err) => {
-                            println!("{:?}", err);
-                            errdone = true;
-                        }
-                    }
+            loop {
+                let mut outbuf = String::new();
+                match out.read_line(&mut outbuf) {
+                    Ok(0) => {}
+                    Ok(_) => stderr_mutex_clone.lock().unwrap().push(outbuf),
+                    Err(err) => println!("{:?}", err)
                 }
             }
         });
@@ -181,9 +166,6 @@ impl WaypointApp {
     }
 
     /// Returns the logs collected from the ServiceInstance over it's lifetime.
-    /// 
-    /// Note that this is pretty inefficient - we're cloning a whole vector of logs here.
-    /// Should instead either be a diff or a read-only reference to the existing logs. 
     pub fn get_service_logs(&mut self, service_id: &ServiceId) -> Option<Arc<Mutex<Vec<String>>>> {
         let process = self.running_services.get(service_id)?;
         Some(process.logs.clone())
